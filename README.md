@@ -3,7 +3,7 @@
 Portal full-stack para inscrições ACA-SÊNIOR. As inscrições, mensagens e pagamentos ficam numa base PostgreSQL central; o navegador não é usado como base de dados.
 
 ## Funcionalidades
-- Inscrição online com limite de 150 vagas.
+- Inscrição online com limite de 150 vagas e encerramento automático em 25/10/2026 às 23:59 (Angola).
 - Taxa de 4.000 Kz.
 - Pagamento exclusivamente presencial.
 - Numeração automática `ACA-2026-0001`, etc.

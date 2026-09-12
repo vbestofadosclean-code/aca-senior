@@ -17,6 +17,7 @@ const ADMIN_PASSWORD_1 = process.env.ADMIN_PASSWORD_1;
 const ADMIN_PASSWORD_2 = process.env.ADMIN_PASSWORD_2;
 const CAPACITY = 150;
 const FEE = 4000;
+const REGISTRATION_DEADLINE = new Date('2026-10-25T23:59:00+01:00');
 const MAX_BODY = '200kb';
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
@@ -132,6 +133,17 @@ app.post('/api/registrations', requireJsonBody, async (req,res)=>{
   const fields=['nome','nascimento','sexo','naturalidade','bilhete','residencia','contacto','email','agrupamento','nucleo','patrulha','cargo','categoria','deficiencia'];
   const data={}; for(const f of fields)data[f]=normalize(req.body[f]); data.obs=normalize(req.body.obs);
   if(fields.some(f=>!data[f])) return res.status(400).json({error:'Preencha todos os campos obrigatórios.'});
+  if(Date.now() > REGISTRATION_DEADLINE.getTime()) return res.status(410).json({error:'O prazo de inscrição terminou em 25/10/2026 às 23:59.'});
+
+  const cargosPermitidos={
+    'Sénior':['Guia de Patrulha','Subguia','Secretário','Tesoureiro','Logística','Guarda Material','Animador','Socorrista'],
+    'Caminheiro':['Chefe de Equipe','Subguia','Secretário','Tesoureiro','Logística','Guarda Material','Animador','Socorrista'],
+    'Dirigente':['Chefe da Unidade','Adjunto Chefe da Unidade','Secretário','Tutor','Acompanhante','Outro']
+  };
+  if(!Object.prototype.hasOwnProperty.call(cargosPermitidos,data.categoria) || !cargosPermitidos[data.categoria].includes(data.cargo)){
+    return res.status(400).json({error:'Selecione uma categoria e um cargo válidos.'});
+  }
+
   const limits={nome:160,naturalidade:120,bilhete:60,residencia:220,contacto:40,email:254,agrupamento:160,nucleo:160,patrulha:160,cargo:120,categoria:80,deficiencia:120,obs:1000,sexo:40};
   for(const [key,max] of Object.entries(limits)) if(data[key].length>max) return res.status(400).json({error:`O campo ${key} excede o tamanho permitido.`});
   if(!isEmail(data.email)) return res.status(400).json({error:'Informe um e-mail válido.'});
@@ -224,5 +236,5 @@ app.use((_req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 Promise.all([bcrypt.hash(ADMIN_PASSWORD_1,12),bcrypt.hash(ADMIN_PASSWORD_2,12)]).then(async([h1,h2])=>{
   PASSWORD_1_HASH=h1; PASSWORD_2_HASH=h2;
   await initDb();
-  app.listen(PORT,()=>console.log(`ACA-SÊNIOR online server listening on ${PORT}`));
+  app.listen(PORT, '0.0.0.0', ()=>console.log(`ACA-SÊNIOR online server listening on ${PORT}`));
 }).catch(e=>{console.error('Startup failed',e);process.exit(1);});
