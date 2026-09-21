@@ -85,7 +85,8 @@ async function initDb() {
     payment_status VARCHAR(20) NOT NULL DEFAULT 'pending',
     payment_value INTEGER NOT NULL DEFAULT 6000,
     payment_confirmed_at TIMESTAMPTZ,
-    payment_method TEXT
+    payment_method TEXT,
+    hidden BOOLEAN NOT NULL DEFAULT FALSE
   );`);
   // Compatibilidade com bases antigas: o campo Cargo deixou de fazer parte do sistema.
   await pool.query(`DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='registrations' AND column_name='cargo') THEN ALTER TABLE registrations ALTER COLUMN cargo DROP NOT NULL; END IF; END $$;`);
@@ -98,11 +99,14 @@ async function initDb() {
     mensagem TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     message_type VARCHAR(20) NOT NULL DEFAULT 'contact',
-    read_at TIMESTAMPTZ
+    read_at TIMESTAMPTZ,
+    rating SMALLINT
   );`);
   await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_type VARCHAR(20) NOT NULL DEFAULT 'contact';`)
   await pool.query(`ALTER TABLE registrations ALTER COLUMN payment_value SET DEFAULT 6000`);
   await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE registrations ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS rating SMALLINT;`);
   await pool.query(`CREATE INDEX IF NOT EXISTS messages_created_idx ON messages (created_at DESC);`);
 }
 
@@ -110,10 +114,10 @@ function publicRegistration(r) {
   return { registrationNumber:r.registration_number, nome:r.nome, nascimento:r.nascimento, sexo:r.sexo, naturalidade:r.naturalidade, bilhete:r.bilhete, residencia:r.residencia, contacto:r.contacto, email:r.email, agrupamento:r.agrupamento, nucleo:r.nucleo, patrulha:r.patrulha, categoria:r.categoria, deficiencia:r.deficiencia, obs:r.obs, createdAt:r.created_at, paymentStatus:r.payment_status, paymentValue:r.payment_value, paymentConfirmedAt:r.payment_confirmed_at };
 }
 function adminRegistration(r) {
-  return { id:r.id, registrationNumber:r.registration_number, nome:r.nome, nascimento:r.nascimento, sexo:r.sexo, naturalidade:r.naturalidade, bilhete:r.bilhete, residencia:r.residencia, contacto:r.contacto, email:r.email, agrupamento:r.agrupamento, nucleo:r.nucleo, patrulha:r.patrulha, categoria:r.categoria, deficiencia:r.deficiencia, obs:r.obs, createdAt:r.created_at, paymentStatus:r.payment_status, paymentValue:r.payment_value, paymentConfirmedAt:r.payment_confirmed_at, paymentMethod:r.payment_method };
+  return { id:r.id, registrationNumber:r.registration_number, nome:r.nome, nascimento:r.nascimento, sexo:r.sexo, naturalidade:r.naturalidade, bilhete:r.bilhete, residencia:r.residencia, contacto:r.contacto, email:r.email, agrupamento:r.agrupamento, nucleo:r.nucleo, patrulha:r.patrulha, categoria:r.categoria, deficiencia:r.deficiencia, obs:r.obs, createdAt:r.created_at, paymentStatus:r.payment_status, paymentValue:r.payment_value, paymentConfirmedAt:r.payment_confirmed_at, paymentMethod:r.payment_method, hidden:Boolean(r.hidden) };
 }
 function adminMessage(m) {
-  return { id:m.id, nome:m.nome, contacto:m.contacto, mensagem:m.mensagem, createdAt:m.created_at, type:m.message_type, readAt:m.read_at };
+  return { id:m.id, nome:m.nome, contacto:m.contacto, mensagem:m.mensagem, createdAt:m.created_at, type:m.message_type, readAt:m.read_at, rating:m.rating||null };
 }
 function requireAdmin(req,res,next) {
   try {
@@ -134,8 +138,8 @@ app.post('/api/registrations', requireJsonBody, async (req,res)=>{
   const fields=['nome','nascimento','sexo','naturalidade','bilhete','residencia','contacto','email','agrupamento','nucleo','patrulha','categoria','deficiencia'];
   const data={}; for(const f of fields)data[f]=normalize(req.body[f]); data.obs=normalize(req.body.obs);
   if(fields.some(f=>!data[f])) return res.status(400).json({error:'Preencha todos os campos obrigatórios.'});
-  const registrationDeadline = new Date('2026-10-20T23:59:00+01:00');
-  if (new Date() > registrationDeadline) return res.status(403).json({error:'O prazo de inscrição terminou em 20/10/2026 às 23:59.'});
+  const registrationDeadline = new Date('2026-10-25T23:59:00+01:00');
+  if (new Date() > registrationDeadline) return res.status(403).json({error:'O prazo de inscrição terminou em 25/10/2026 às 23:59.'});
   const limits={nome:160,naturalidade:120,bilhete:60,residencia:220,contacto:40,email:254,agrupamento:160,nucleo:160,patrulha:160,categoria:80,deficiencia:120,obs:1000,sexo:40};
   for(const [key,max] of Object.entries(limits)) if(data[key].length>max) return res.status(400).json({error:`O campo ${key} excede o tamanho permitido.`});
   if(!isEmail(data.email)) return res.status(400).json({error:'Informe um e-mail válido.'});
@@ -173,6 +177,16 @@ app.post('/api/messages', requireJsonBody, async (req,res)=>{
   res.status(201).json({ok:true});
 });
 
+
+app.post('/api/reviews', requireJsonBody, async (req,res)=>{
+  const rating=Number(req.body.rating), mensagem=normalize(req.body.mensagem);
+  if(!Number.isInteger(rating)||rating<1||rating>5)return res.status(400).json({error:'Escolha uma classificação de 1 a 5 estrelas.'});
+  if(!mensagem)return res.status(400).json({error:'Escreva a sua crítica antes de enviar.'});
+  if(mensagem.length>2000)return res.status(400).json({error:'A crítica excede o tamanho permitido.'});
+  await pool.query(`INSERT INTO messages (nome,contacto,mensagem,message_type,rating) VALUES ($1,$2,$3,'review',$4)`,['Avaliação do site','Anónimo',mensagem,rating]);
+  res.status(201).json({ok:true});
+});
+
 app.post('/api/admin/login', requireJsonBody, async (req,res)=>{
   const limited=rateLimitLogin(req,res); if(limited) return;
   const email=normalizeEmail(req.body.email);
@@ -200,8 +214,10 @@ app.get('/api/admin/stats',requireAdmin,async(_req,res)=>{
   res.json({total:s.total,paid:s.paid,pending:s.pending,remaining:Math.max(0,CAPACITY-s.total),received:s.paid*FEE,pendingValue:s.pending*FEE,capacity:CAPACITY,fee:FEE,unreadMessages:unread.rows[0].total});
 });
 app.get('/api/admin/registrations',requireAdmin,async(req,res)=>{
-  const q=normalize(req.query.q); const params=[]; let where='';
-  if(q){params.push(`%${q.toLowerCase()}%`);where=`WHERE LOWER(nome) LIKE $1 OR LOWER(agrupamento) LIKE $1 OR LOWER(registration_number) LIKE $1 OR LOWER(categoria) LIKE $1`;}
+  const q=normalize(req.query.q); const includeHidden=req.query.includeHidden==='1'; const params=[]; const filters=[];
+  if(!includeHidden)filters.push('hidden=FALSE');
+  if(q){params.push(`%${q.toLowerCase()}%`);filters.push(`(LOWER(nome) LIKE $${params.length} OR LOWER(agrupamento) LIKE $${params.length} OR LOWER(registration_number) LIKE $${params.length} OR LOWER(categoria) LIKE $${params.length})`);}
+  const where=filters.length?'WHERE '+filters.join(' AND '):'';
   const {rows}=await pool.query(`SELECT * FROM registrations ${where} ORDER BY id DESC`,params);
   res.json({registrations:rows.map(adminRegistration)});
 });
@@ -215,10 +231,21 @@ app.get('/api/admin/messages/unread-count',requireAdmin,async(_req,res)=>{const 
 app.post('/api/admin/messages/:id/read',requireAdmin,async(req,res)=>{const {rows}=await pool.query('UPDATE messages SET read_at=COALESCE(read_at,NOW()) WHERE id=$1 RETURNING *',[req.params.id]);if(!rows.length)return res.status(404).json({error:'Mensagem não encontrada'});res.json({message:adminMessage(rows[0])});});
 app.post('/api/admin/messages/read-all',requireAdmin,async(_req,res)=>{await pool.query('UPDATE messages SET read_at=NOW() WHERE read_at IS NULL');res.json({ok:true});});
 app.delete('/api/admin/messages/:id',requireAdmin,async(req,res)=>{const {rowCount}=await pool.query('DELETE FROM messages WHERE id=$1',[req.params.id]);if(!rowCount)return res.status(404).json({error:'Mensagem não encontrada'});res.json({ok:true});});
+app.post('/api/admin/registrations/:id/hidden',requireAdmin,async(req,res)=>{
+  if(typeof req.body.hidden!=='boolean')return res.status(400).json({error:'Estado de ocultação inválido.'});
+  const {rows}=await pool.query('UPDATE registrations SET hidden=$1 WHERE id=$2 RETURNING *',[req.body.hidden,req.params.id]);
+  if(!rows.length)return res.status(404).json({error:'Inscrição não encontrada'});
+  res.json({registration:adminRegistration(rows[0])});
+});
+app.delete('/api/admin/registrations/:id',requireAdmin,async(req,res)=>{
+  const {rowCount}=await pool.query('DELETE FROM registrations WHERE id=$1',[req.params.id]);
+  if(!rowCount)return res.status(404).json({error:'Inscrição não encontrada'});
+  res.json({ok:true});
+});
 app.post('/api/admin/registrations/:id/payment',requireAdmin,async(req,res)=>{
   if(typeof req.body.paid!=='boolean') return res.status(400).json({error:'Estado de pagamento inválido.'});
   const paid=req.body.paid;
-  const {rows}=await pool.query(`UPDATE registrations SET payment_status=$1,payment_confirmed_at=$2,payment_method=$3 WHERE id=$4 RETURNING *`,[paid?'paid':'pending',paid?new Date():null,paid?'Pagamento em mão':null,req.params.id]);
+  const {rows}=await pool.query(`UPDATE registrations SET payment_status=$1,payment_confirmed_at=$2,payment_method=$3 WHERE id=$4 RETURNING *`,[paid?'paid':'pending',paid?new Date():null,paid?'Transferência bancária':null,req.params.id]);
   if(!rows.length)return res.status(404).json({error:'Inscrição não encontrada'});
   res.json({registration:adminRegistration(rows[0])});
 });
@@ -228,5 +255,5 @@ app.use((_req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 Promise.all([bcrypt.hash(ADMIN_PASSWORD_1,12),bcrypt.hash(ADMIN_PASSWORD_2,12)]).then(async([h1,h2])=>{
   PASSWORD_1_HASH=h1; PASSWORD_2_HASH=h2;
   await initDb();
-  app.listen(PORT, '0.0.0.0', ()=>console.log(`ACA-SÊNIOR online server listening on ${PORT}`));
+  app.listen(PORT, '0.0.0.0', ()=>console.log(`Cami-Sênior online server listening on ${PORT}`));
 }).catch(e=>{console.error('Startup failed',e);process.exit(1);});

@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS registrations (
   payment_status VARCHAR(20) NOT NULL DEFAULT 'pending',
   payment_value INTEGER NOT NULL DEFAULT 6000,
   payment_confirmed_at TIMESTAMPTZ,
-  payment_method TEXT
+  payment_method TEXT,
+  hidden BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE TABLE IF NOT EXISTS messages (
   id BIGSERIAL PRIMARY KEY,
@@ -28,7 +29,8 @@ CREATE TABLE IF NOT EXISTS messages (
   mensagem TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   message_type VARCHAR(20) NOT NULL DEFAULT 'contact',
-  read_at TIMESTAMPTZ
+  read_at TIMESTAMPTZ,
+  rating SMALLINT
 );
 CREATE INDEX IF NOT EXISTS registrations_name_idx ON registrations (LOWER(nome));
 CREATE INDEX IF NOT EXISTS registrations_group_idx ON registrations (LOWER(agrupamento));

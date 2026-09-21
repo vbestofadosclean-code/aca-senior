@@ -1,6 +1,6 @@
-# ACA-SÊNIOR — versão online de produção
+# Cami-Sênior — versão online de produção
 
-Portal full-stack para inscrições ACA-SÊNIOR. As inscrições, mensagens e pagamentos ficam numa base PostgreSQL central; o navegador não é usado como base de dados.
+Portal full-stack para inscrições Cami-Sênior. As inscrições, mensagens e pagamentos ficam numa base PostgreSQL central; o navegador não é usado como base de dados.
 
 ## Funcionalidades
 - Inscrição online com limite de 150 vagas.
