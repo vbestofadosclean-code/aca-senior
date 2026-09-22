@@ -35,7 +35,7 @@
   function ensureLoginUI(){
     if($('adminLoginModal'))return;
     const wrap=document.createElement('div');wrap.id='adminLoginModal';wrap.innerHTML=`<div class="secure-card admin-login-card"><button class="secure-btn secondary" id="adminLoginCancel">Cancelar</button><h1>Acesso Administrativo</h1><p>Introduza um dos e-mails autorizados e as duas palavras-passe.</p><div class="pass-grid"><label>E-mail<input id="adminEmailInput" type="email" autocomplete="username" placeholder="E-mail autorizado"></label><label>Palavra-passe 1<input id="adminPass1Input" type="password" autocomplete="current-password" placeholder="Palavra-passe 1"></label><label>Palavra-passe 2<input id="adminPass2Input" type="password" autocomplete="current-password" placeholder="Palavra-passe 2"></label></div><p id="adminLoginError" style="color:#ff8f8f;display:none"></p><div class="secure-actions"><button class="secure-btn" id="adminLoginSubmit">Entrar na Área Administrativa</button></div></div>`;
-    document.body.appendChild(wrap);$('adminLoginCancel').onclick=()=>wrap.classList.remove('active');$('adminLoginSubmit').onclick=doAdminLogin;
+    document.body.appendChild(wrap);$('adminLoginCancel').onclick=()=>window.location.replace(window.location.pathname);$('adminLoginSubmit').onclick=doAdminLogin;
     ['adminEmailInput','adminPass1Input','adminPass2Input'].forEach(id=>$(id).addEventListener('keydown',e=>{if(e.key==='Enter')doAdminLogin();}));
   }
   async function doAdminLogin(){
